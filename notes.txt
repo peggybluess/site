@@ -1,0 +1,436 @@
+
+
+TODO:
+  release callbacks
+      lista de callbacks borrar en cada punto
+         [(id, callback)]
+      release de los callbacks en la lista mayores que id
+      id: seq-random
+         take 3
+
+  post on hacker news  que?
+     de momento no hasta que haya algo presentable.
+
+
+  benchmarking
+     mapreduce comparado con spark
+     en una sola maquina
+
+  learn AWS
+
+
+  finalize streaming
+
+  update airpair
+
+  como hacer un notebook en browser:
+
+     un solo comando cualquier cosa que entre
+       con atServer se compila, se ejecuta con runghc y se ven los resultados, y se reciben los resultados.
+
+  DDS: make distribute intelligent: depending on machine load and size of work.
+
+       benchmark
+
+       make it transactionally persistent sync the log also.
+          como hacer el sync de varios threads de manera que cuando rearranquen
+          encuentren el log?
+          generando nodes con genId.
+             y las bifurcaciones?
+                    choose [1...10]
+                  if==1 then
+                  if == 2 then
+                  if == 3 then  cada uno un thread y  una bifurcacion
+                  detectar cambio de thread asociar a cada thread un log
+                     forkIO -> forkIOLogged
+                     o logged detecta cambio de thread.
+                        cuando detecta wasParallel
+
+
+
+  option with bad input :: 'jkj' option not found, active options:........
+  grabar ejemolo de progamming at the specification level buscar una especificaci¢n.
+  grabar una demo donde se muestra:
+      webapp - streaming
+      Atm - specification level
+      online creation of demo of features
+
+  actualizar la doc map-reduce in SOH
+  teleport' as a relay to cut the log
+   it act as a wormhole to the same connection, but cut the log.
+     it advances the remote mread point further in the execution.
+     it also disallows upstream invocations.
+
+  fix test suite
+           previamente, optimizar DDS quitando Vector.   hecho
+  no ceder el control en <|> si queremos que ejecutar algo en modo bloqueo:
+
+    a <|> b
+
+    cuando a ejecuta algo asyncrono, pero hacerlo sincrono
+
+     async x <|> y
+
+     no ejecutar y hasta que se ejecute x y dependiendo del resultado
+
+     sync (async x)= x
+
+     return Wasremote evita que se ejecute y
+
+     sync x= do
+
+        manipulate the stack, pero no sabemos que hay luego, a diferencia de <**
+        poner en el stack lo adecuado para que cuando ejecute x, ejecute y
+        donde esta y?
+        restore
+        y es lo que est  despues de un operador:
+        >>=  (sync (async x)) <|> y
+        setData WasRemote
+        fs <- getContinuation
+        r <- async x
+        delSData WasRemote
+        runContinuations fs r
+
+
+
+FIXED:
+  verify webapp.hs does run in docker
+  logging simplification :: Maybe a as log
+  FIX bug in mclustered when more than 4 nodes fixed
+  FIX bug in collect 0 : look when all threads have completed
+  tests:
+     a global MVar that store effects: MVar (Node, a)  x
+     setup testing
+  web browser rendering on event
+      delete widget content
+      release callbacks
+      send finish event to client & server
+
+fix bug map-reduce fixed
+      mailbox uses EVars
+      EVars don't play well with wormhole/teleport fixed
+      can be solved with TChans   fixed
+
+  fix EVars with wormhole/teleport - Solved
+
+
+
+
+(<*>)=   proc proc2 =Transient $  do
+    v <- liftIO $ newIORef (Nothing,Nothing)
+    (proc >> update1 v) <|> (proc2 update2 v)
+    where
+    update1 v x=
+       liftIO $ atomicModifyIORef' v $ \(_,n2) -> ((Just x, n2),(Just x <*> n2))
+    update2 v x=
+       liftIO $ atomicModifyIORef' v $ \(n1,_) -> ((n1, Just x),(n1 <*> Just x)
+
+
+
+-- |  update the EVar and execute all readEVar blocks with last in - first out priority
+writeEVar (EVar id ref1) x= Transient $ do
+   EVars ref <- getData `onNothing` error "No Events context"
+   liftIO $ writeIORef ref1 $ Just x   -- signal that the EVar continuations are being executed
+   map <- liftIO $ readIORef ref
+   let Just conts = M.lookup id map <|> Just []
+       len= length conts
+   runCont'  len id ref
+
+cambiar IORef por MVar  lanzar runCont en paralelo
+
+collect :: use finish instead of kill
+
+remove non used vars from the log using lazyness
+
+como puede ejecutar el segundo operando de <|>
+
+
+cuantos endreduce debe recibir un nodo?
+numero
+
+docker run -it -p 2020:2020 -v   /c/Users/magocoal/OneDrive/Haskell/devel/transient:/transient -v /c/Users/magocoal/OneDrive/Haskell/devel/transient-universe:/transient-universe -v /c/Users/magocoal/OneDrive/Haskell/devel/ghcjs-hplay:/ghcjs-hplay -v /c/Users/magocoal/OneDrive/Haskell/devel/ghcjs-perch:/ghcjs-perch  agocorona/ghcjstransient
+
+
+colision de identificadores:
+   |
+ |    |
+
+usar getElementById para no repetir identificadores
+
+collect wait fo
+
+ execute something one single time:
+
+
+copySData para que no viaje:
+
+  un SData general indexado por indice y tipo
+
+  show = id
+
+
+como guardar un estado por cada envio:
+     deberia haber un estado por cada envio
+     copySData send identifier
+       con ese identificador de vuelta, copiar el estado correspondiente
+   como evitar eso
+
+   un copySData por cada dato: viaja ida y vuelta pero es coherente.
+
+ormhole :: Loggable a => Node -> Cloud a -> Cloud a
+wormhole node (Cloud comp) = local $ Transient $ do
+   oldconn <- getSessionData `onNothing` error "wormhole: no connection set"
+
+   Log rec log fulLog <- getSessionData `onNothing` return (Log False [][])
+   stat <- get
+   rstate <- newIORef stat
+   let lengthLog= length fulLog
+   if not rec  -- !!> show rec
+            then runTrans $ do
+                conn <- mconnect node  -- !!> ("connecting node " ++ show node)           -- !!> "wormhole local"
+
+                liftIO $ msend conn $ SLast $ reverse fulLog   -- !!> ("sending "++ show fulLog) -- SLast will disengage  the previous wormhole/listen
+
+                setSData $ conn{calling= True,offset= lengthLog} -- WormHole conn True  lengthLog
+                (mread conn >>= check fulLog) <|> return ()   -- !!> "MREAD"
+                putState rstate   !!> "PUTSTATE"
+                comp <**  do
+                   setSData oldconn
+                   getState rstate  !!> "GETSTAT"
+
+
+            else do
+
+             if null log    -- !!> ("WORM LOG="++ show log)
+
+              then do
+
+               setSessionData $ oldconn{calling= False,offset= lengthLog}
+
+               runTrans $ do
+                  mlog <- mread oldconn    -- !!> "MREAD"
+                  check  fulLog mlog
+                  r <- comp   <** setSData oldconn    -- !!> "RESET RESET RESETSSSSSS")
+
+                  setSData WasRemote
+                  return r
+
+              else do
+
+               setSessionData $ oldconn{calling= False,offset= lengthLog}
+               runTrans $ comp  <** setSData oldconn    -- !!> "RESET RESET RESETSSSSSS"
+
+  where
+  putState rstate= do
+        st <- get
+        st' <- readIORef rstate
+        put st'{children= childrent st}
+  getState=do
+        stnew <- get
+        writeIORef rstate stnew
+
+
+
+       read  <|> return
+       ..
+       wormhole
+       ..
+       wormhole
+       ..
+       ..
+
+cuando borrar? cuando el elemento exista
+  cuando existe?
+    cuando esta en modo repeticion despues de un evento
+
+  option  >>  choose >>  print
+    repeat.................borrar elemento
+                           generar rendering
+
+estados:
+norepeat: generar rendering
+repeat :: borrar rendering repetido >> canbiar a repeat handled
+repeat hadled: borrar element >> generar rendering >> noRepeat
+
+como detectar <|> para que no cree otro span??
+alternativas:
+   detectar >>=  solo entonces a¤adir span equivalente a viewEffect
+     un efecto que avise
+       pero render puede estar interno a un >>= y no detectarlo.
+
+   detectar <|> y no ponerlo
+     flag render dentro de render
+         render  render a <|> render b
+         if flag render, no poner
+       pero es recursivo?
+       debe ser recursivo
+         render debe meter su propio span, pero en <|> no meter el siguiente termino dentro
+            no hacer update de IdLine
+
+       render $ render <|> render:
+         <2>   <3>
+            <2>   <3>
+                      <1>
+       como a¤adir aun elemento sin borrar
+       solo borrar cuando hay un evento
+         Repeat usarlo en runWidgetId'
+
+opcion quitar viewEffects
+  render no puede distinguir monad de  <|> solo hace depender un render del siguiente
+
+       render x  <|> render y  -> no ejecutaria render y pero lo borraria
+         solucion : render  $ x <|> y
+           back by types:  x: y Widget. render :: Widget -> Transient
+
+  render sustituir x por strip x, f por runWidgetId....
+
+no se que hacer
+render  tiene que producir un enganche que puede usar el siguente render:
+
+usando add
+
+
+getSessionData -> getData
+
+getSData -> getData
+
+
+              id <- newMVar
+              (mread conn >>= check fulLog >> writeid >> comp) <|> comp >>= readid
+
+
+                 <** setSData oldconn
+
+   better writeId at the end of recovery.
+
+            como hacer que recoja los identificadores?
+            el theread of return tiene que cojer el identificador
+               inyectarlo despues de cada mread
+
+como hacer que mrec empiece por un id que sea el ultimo consumido por el anterior:
+   pero hay que resetear el contador del IORef cuando?
+     hay secuencias de mread que corresponden a la misma interaccion
+         tienen logs cada vez mas largos, pero son uno continuacion de otro
+             puede utilizarsse length fulLog como prefijo de secuencia? si
+ n <- gets mfSequence
+ seq <- newIORef n
+
+ (mread conn >>= check fulLog) <|> return ()  !!> "MREAD"
+        n' <- readIORef seq
+        modify $ \s -> s{mfSequence= n'}
+        comp <** (do setSData oldconn   !!> "RESET RESET RESETSSSSSS")
+                     writeIORef sec mfsequence st
+
+
+ r <- wormhole
+    render
+
+    teleport
+    teleport
+ render...
+
+wormhole proc= do
+    if local
+      send
+
+      mrec <|> return()
+
+      proc
+
+    else
+      mrec
+
+
+oldState <- getSData :: TransIO WorkerState
+
+case oldState of
+  Idle -> go
+  NoTasks -> liftIO (atomically (takeTMVar newTaskAvailSemaphore)) >> go
+getTasks
+doJob
+if noMoreTasks
+   then setSData NoTasks
+   else setSData Idle
+
+
+como cerrar un handler
+
+  necesitamos algo que en caso de matar el proceso ejecute los handlers.
+  poner un event Handler en IO y llamar a finish
+
+
+streamFrom en terminos de process:
+
+streamFrom= process (return) (mconnect) (close/release) $ \h _ -> do
+
+
+streamFrom :: Loggable a => Node -> TransIO (StreamData a) -> TransIO (StreamData a)
+streamFrom node remoteProc= logged $ Transient $ do
+      liftIO $ print "STREAMFROM"
+      Log rec log fulLog <- getSessionData `onNothing` return (Log False [][])
+      if rec
+         then
+          runTrans $ do
+            liftIO $ print "callTo Remote executing"
+            conn <- getSData  <|> error "callTo receive: no connection data"
+
+            r <- remoteProc                  -- !> "executing remoteProc" !> "CALLTO REMOTE" -- LOg="++ show fulLog
+            n <- liftIO $ msend conn  r      -- !> "sent response"
+            setSData WasRemote
+            stop
+          <|> do
+            setSData WasRemote
+            stop
+
+         else  process (return()) (mconnect node) (mcloseRelease node) $ do
+
+
+            liftIO $ msend conn  (SLast $ reverse fulLog)  !> "CALLTO LOCAL" -- send "++ show  log
+
+            let log'= WaitRemote:tail log
+            setSessionData $ Log rec log' log'
+            liftIO $ print "mread in callTO"
+            mread conn
+
+      where
+      mcloseRelease node conn reason=
+         case reason of
+            Nothing -> release conn
+            Just r -> mclose conn
+--              adjustRecThreads h
+
+--            case r of
+--                 SError e -> do
+--                     liftIO $ do
+--                        release node conn
+--                        print e
+--                     stop
+--                 SDone ->  release node conn >> empty
+--                 smore@(SMore x) -> return smore
+--                 other ->  release node conn >> return other
+
+
+bracket open op =
+   newCont
+
+
+
+withEvent proc= do
+    initFinish
+    proc
+    delFinish
+
+  a¤adir mecanismo para a¤adir funciones a cerrar cuando se mata el proceso:
+
+newtype CloseHandlers = CloseHandlers [IO ()) deriving typeable
+
+register :: Monid a -> a -> TransIO ()
+register x= (getSData <|> return []) >>=  \xs -> setSData (x:xs)
+
+runHandlers= getSData >>= liftIO . sequence
+
+o usar Events
+  h <- open
+  error <- newEVar
+  registerError (hClose h)
+  mr <- spa
